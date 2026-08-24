@@ -38,9 +38,9 @@ from pydantic import BaseModel, Field
 
 KNOWLEDGE_BASE_PATH = Path(__file__).parent / "venue_knowledge_base.txt"
 
-EMBEDDING_MODEL: str = "text-embedding-004"
-GENERATION_MODEL: str = "gemini-2.5-flash"
-EMBEDDING_DIMENSION: int = 768  # text-embedding-004 output dimension
+EMBEDDING_MODEL: str = "gemini-embedding-2"
+GENERATION_MODEL: str = "gemini-3.6-flash"
+EMBEDDING_DIMENSION: int = 768  # gemini-embedding-2 output dimension
 TOP_K: int = 5                  # Number of chunks to retrieve
 EMBEDDING_BATCH_SIZE: int = 100 # API batch limit
 
@@ -182,8 +182,6 @@ def chunk_text(raw_text: str) -> list[TextChunk]:
 def compute_embeddings(
     client: genai.Client,
     texts: list[str],
-    *,
-    task_type: str = "RETRIEVAL_DOCUMENT",
 ) -> np.ndarray:
     """
     Generate embeddings for *texts* using the Gemini embedding model.
@@ -191,8 +189,6 @@ def compute_embeddings(
     Args:
         client: An initialised ``genai.Client``.
         texts: The strings to embed.
-        task_type: ``"RETRIEVAL_DOCUMENT"`` for corpus docs,
-                   ``"RETRIEVAL_QUERY"`` for user queries.
 
     Returns:
         A ``(len(texts), EMBEDDING_DIMENSION)`` float32 NumPy array.
@@ -204,7 +200,6 @@ def compute_embeddings(
         response = client.models.embed_content(
             model=EMBEDDING_MODEL,
             contents=batch,
-            config=types.EmbedContentConfig(task_type=task_type),
         )
         all_embeddings.extend(emb.values for emb in response.embeddings)
 
@@ -262,7 +257,7 @@ def build_rag_index(
     raw_text = load_knowledge_base()
     chunks = chunk_text(raw_text)
     embeddings = compute_embeddings(
-        _client, [c.content for c in chunks], task_type="RETRIEVAL_DOCUMENT"
+        _client, [c.content for c in chunks]
     )
     index = build_faiss_index(embeddings)
     return index, chunks
@@ -276,7 +271,7 @@ def retrieve_context(
     k: int = TOP_K,
 ) -> list[tuple[TextChunk, float]]:
     """Retrieve the top-*k* most relevant chunks for a user query."""
-    query_emb = compute_embeddings(client, [query], task_type="RETRIEVAL_QUERY")
+    query_emb = compute_embeddings(client, [query])
     scores, indices = search_faiss_index(index, query_emb, k=k)
     return [
         (chunks[int(idx)], float(score))
