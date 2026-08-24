@@ -68,7 +68,7 @@ Each venue includes: operating hours, sport-specific rules, pricing, dress code,
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/<your-username>/stapubox-venue-assistant.git
+git clone https://github.com/AnkitXhina/stapubox-venue-assistant.git
 cd stapubox-venue-assistant
 ```
 
