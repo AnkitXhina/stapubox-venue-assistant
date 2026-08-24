@@ -268,16 +268,26 @@ def retrieve_context(
     index: faiss.IndexFlatIP,
     chunks: list[TextChunk],
     query: str,
-    k: int = TOP_K,
-) -> list[tuple[TextChunk, float]]:
+    k: int = 5,
+) -> tuple[str, list[tuple[TextChunk, float]]]:
     """Retrieve the top-*k* most relevant chunks for a user query."""
     query_emb = compute_embeddings(client, [query])
     scores, indices = search_faiss_index(index, query_emb, k=k)
-    return [
+    
+    retrieved_chunks = [
         (chunks[int(idx)], float(score))
         for score, idx in zip(scores, indices)
         if idx >= 0  # FAISS returns -1 for unfilled slots
     ]
+    
+    context_parts: list[str] = []
+    for i, (chunk, _score) in enumerate(retrieved_chunks, 1):
+        context_parts.append(
+            f"[Source {i}: {chunk.source_label}]\n{chunk.content}"
+        )
+    combined_context = "\n\n---\n\n".join(context_parts)
+    
+    return combined_context, retrieved_chunks
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -301,7 +311,7 @@ RULES:
 def generate_answer(
     client: genai.Client,
     query: str,
-    context_chunks: list[tuple[TextChunk, float]],
+    combined_context: str,
 ) -> RAGResponse:
     """
     Generate a structured JSON answer using Gemini with retrieved context.
@@ -309,17 +319,9 @@ def generate_answer(
     The ``response_schema`` parameter enforces strict Pydantic-validated
     output from the model.
     """
-    # ── Assemble context block ──────────────────────────────────────────────
-    context_parts: list[str] = []
-    for i, (chunk, _score) in enumerate(context_chunks, 1):
-        context_parts.append(
-            f"[Source {i}: {chunk.source_label}]\n{chunk.content}"
-        )
-    context_block = "\n\n---\n\n".join(context_parts)
-
     # ── Build the user prompt ───────────────────────────────────────────────
     user_prompt = (
-        f"CONTEXT:\n{context_block}\n\n"
+        f"CONTEXT:\n{combined_context}\n\n"
         f"USER QUESTION:\n{query}\n\n"
         "Respond with a JSON object containing \"answer\" and \"citations\"."
     )
@@ -471,8 +473,8 @@ def main() -> None:
     # ── Run RAG pipeline ────────────────────────────────────────────────────
     with st.spinner("🔎 Searching knowledge base and generating answer …"):
         try:
-            context_chunks = retrieve_context(client, index, chunks, query)
-            rag_response = generate_answer(client, query, context_chunks)
+            combined_context, context_chunks = retrieve_context(client, index, chunks, query, k=5)
+            rag_response = generate_answer(client, query, combined_context)
         except Exception as exc:
             st.error(f"❌ An error occurred: {exc}")
             st.stop()
